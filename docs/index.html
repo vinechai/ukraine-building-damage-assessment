@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ukraine building damage assessment</title>
+<style>
+  body { font-family: -apple-system, Helvetica, Arial, sans-serif; max-width: 780px; margin: 40px auto; padding: 0 20px; line-height: 1.6; color: #222; }
+  h1 { font-size: 1.8em; margin-bottom: 0; }
+  h2 { margin-top: 2.2em; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
+  .subtitle { color: #666; margin-top: 4px; }
+  .finding { background: #f6f6f6; border-left: 4px solid #333; padding: 12px 16px; margin: 1.2em 0; }
+  .warning { background: #fff3cd; border-left: 4px solid #d62728; padding: 12px 16px; margin: 1.2em 0; }
+  iframe { width: 100%; height: 520px; border: 1px solid #ccc; border-radius: 4px; margin: 1em 0; }
+  code { background: #f0f0f0; padding: 1px 5px; border-radius: 3px; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+  a { color: #1a5fb4; }
+  .caption { color: #666; font-size: 0.9em; margin-top: -0.5em; }
+</style>
+</head>
+<body>
+
+<h1>ukraine building damage assessment</h1>
+<p class="subtitle">using free satellite radar data to check which buildings were damaged in the war, and how well that actually works</p>
+
+<h2>the problem</h2>
+<p>the standard way to build a "building damage detection" project is xview2: train a model on xbd, a dataset of before/after
+satellite photos with hand drawn building outlines and damage labels. the problem is xbd only has natural disasters
+(hurricanes, earthquakes, wildfires), zero war damage. and there's no free high resolution satellite imagery for ukraine
+to build an xbd style dataset for the war either. maxar's free imagery program was checked directly, it covers natural
+disasters worldwide, not this war.</p>
+
+<p>what real researchers and journalists (including the economist) actually use for ukraine is a different approach.
+instead of teaching a model to spot buildings in a photo, start from building locations you already know, and check how
+the radar signal at each one changed over time. this only needs sentinel-1 satellite data, which is free and public, and
+radar works through clouds and at night.</p>
+
+<h2>the three ingredients</h2>
+<p>any damage model needs 3 things: where the buildings are, what the satellite saw there over time, and for at least
+some buildings, real ground truth on what actually happened. each comes from a different source:</p>
+<ul>
+  <li><b>building locations</b>, <a href="https://github.com/microsoft/GlobalMLBuildingFootprints">microsoft building footprints</a>,
+  a free global dataset of building outlines. no idea about damage, just shapes.</li>
+  <li><b>satellite signal</b>, sentinel-1 radar, free via google earth engine.</li>
+  <li><b>ground truth</b>, unosat (un satellite centre) manually looked at real high resolution photos and marked every
+  damaged building they could see, for specific ukrainian cities. real human judgement, done once, not automated.</li>
+</ul>
+
+<h2>pwtt: the published project this builds on</h2>
+<p><a href="https://github.com/oballinger/PWTT">pwtt</a> (pixel-wise t-test) is a peer reviewed, open source project that
+already combined all 3 sources above for 19 ukrainian cities: unosat's damage points joined onto microsoft's building
+footprints, plus a simple statistical change detection score computed per building from sentinel-1. it's the same method
+the economist used to track ukraine damage nationwide. pwtt's detection rule has no training involved, it's a fixed
+formula: flag a building damaged if its radar change score crosses a threshold.</p>
+
+<h2>what we built on top</h2>
+<p>we pulled the raw sentinel-1 signal ourselves (not just pwtt's precomputed summary numbers), engineered our own
+features from it, and trained actual classifiers (logistic regression, random forest, gradient boosting, plain
+scikit-learn, no neural network, buildings are roughly the size of one satellite pixel here, so there's no real image
+to feed a computer vision model) to see whether a trained model can do better than pwtt's fixed rule.</p>
+
+<p>evaluated properly: leave one city out cross validation across all 19 cities, each one held out and tested on a model
+that never saw it during training.</p>
+
+<h2>the honest result</h2>
+<div class="finding">
+<p>across all 19 cities, <b>pwtt's simple baseline wins on average</b> (mean AUC 73.8 vs our best model, gradient boosting,
+at 72.4). our model only wins outright on 7 of 19 cities.</p>
+<p>this matches pwtt's own published finding that a simple statistical method rivals more complex ones here. this
+project independently confirmed that, rather than assuming it.</p>
+</div>
+
+<p>we also checked whether a model helps more in some cities than others. it does, but the pattern is more about
+<b>sample size than damage severity</b>. in cities with very few actually damaged buildings (under roughly 90), results
+swing wildly in both directions, some of the biggest wins and the biggest losses in the whole dataset are both in this
+group, which is the signature of noise, not a real effect. we tested this directly with a permutation test (randomly
+reshuffling which city gets which result, thousands of times). a threshold based "use the model above X% damage" rule
+that looked promising did no better than 26.6% of purely random shuffles, not nearly convincing enough to trust. the
+more honest, weaker claim that does hold up: at higher damage rates it's calmer and leans slightly toward the model
+(4 wins, 3 losses among cities over 5% damage), suggestive, not proven.</p>
+
+<h2>seeing where it works and where it doesn't</h2>
+<p>each map below shows real building outlines, colored by whether a method got that building right against real ground
+truth, not by what it predicted. gray/green for correct calls, orange for false alarms, dark red for missed real
+damage. toggle between pwtt's baseline and our model (top right control) to compare their mistakes directly, on a
+satellite basemap underneath (Esri's imagery, exact capture date unknown to us, not necessarily from any specific year
+relevant here, it's just background context for where each building sits).</p>
+
+<h3>rubizhne: highest damage rate in the dataset (33.7%), a case where the baseline wins</h3>
+<iframe src="maps/rubizhne.html"></iframe>
+
+<h3>sievierodonetsk: high damage rate (24.3%), a case where our model wins</h3>
+<iframe src="maps/sievierodonetsk.html"></iframe>
+
+<h3>kremenchuk: very low damage rate (0.1%), the clearest example of small sample noise</h3>
+<p class="caption">this city had the single largest swing against our model of anywhere in the dataset. with only
+about 29 actually damaged buildings out of 27,000, that's a sample size problem, not a reliable measure of either method.</p>
+<iframe src="maps/kremenchuk.html"></iframe>
+
+<h2>a current snapshot: two real bugs found and fixed, one open question left honestly unresolved</h2>
+<div class="warning">
+<p><b>this section applies the trained model to recent satellite data (2026). it's kept separate from the validated
+result above on purpose, this part doesn't fully work, and the investigation into why is more useful shown honestly
+than hidden.</b></p>
+<p>testing it against two cities with almost zero real historical damage (kremenchuk, sumy, both 0.1% in 2022)
+exposed a genuine, confirmed bug: a feature measuring how much a building's signal wobbles across satellite passes was
+built from a different <i>number</i> of passes than training ever saw (coverage is denser now than in 2022, likely a
+new satellite having joined the fleet). matching each city's exact training pass count fixed this for both the
+narrow window and a second, similarly shaped "wide" window feature.</p>
+<p><b>the fix fully resolves kremenchuk</b> (45.2% to 0.8% flagged, matching its true 0.1% almost exactly), clean proof
+the bug was real. <b>it only partly resolves sumy</b> (48.0% to 29.5%, still far above its true 0.1%).</p>
+<table>
+<tr><th>city</th><th>historical (2022)</th><th>before any fix</th><th>after both fixes</th></tr>
+<tr><td>rubizhne (real front line damage)</td><td>33.7%</td><td>63.7%</td><td>51.7%</td></tr>
+<tr><td>sievierodonetsk (real front line damage)</td><td>24.3%</td><td>73.0%</td><td>63.0%</td></tr>
+<tr><td>mariupol (real front line damage)</td><td>31.3%</td><td>71.6%</td><td>52.1%</td></tr>
+<tr><td><b>kremenchuk, resolved</b></td><td><b>0.1%</b></td><td>45.2%</td><td><b>0.8%</b></td></tr>
+<tr><td><b>sumy, still elevated</b></td><td><b>0.1%</b></td><td>48.0%</td><td><b>30.6%</b></td></tr>
+</table>
+<p>also found and fixed a separate, unrelated bug: an early mariupol pull used a different satellite orbit than its
+2022 baseline, corrupting 95% of its readings. refetched with the orbit forced to match.</p>
+<p><b>"control city" turned out to be the wrong assumption.</b> looked up kremenchuk and sumy's actual history since
+2022. sumy suffered a deadly missile strike in november 2024, the deadliest attack on ukrainian civilians since 2023
+in april 2025 (35 killed, 20 buildings damaged), and more strikes in june 2025. kremenchuk's oil refinery was hit by
+69 missiles and 260+ drones over the course of the war, plus residential strikes in 2024 to 2026. these were never
+quiet, untouched cities, some of the elevated reading could be real, accumulated damage, not pure error.</p>
+<p><b>the most direct test available: pull multiple years and look for a jump at the known strike dates.</b> did
+exactly that, summer snapshots for kremenchuk (2023 to 2026) and windows bracketing sumy's two worst strikes, tracking
+the share of buildings with an elevated raw signal (not run through the model, just the raw numbers):</p>
+<table>
+<tr><th>city / period</th><th>% of buildings elevated</th></tr>
+<tr><td>kremenchuk 2023 summer</td><td>9.8%</td></tr>
+<tr><td>kremenchuk 2024 summer</td><td>10.0%</td></tr>
+<tr><td>kremenchuk 2025 summer</td><td>9.9%</td></tr>
+<tr><td>kremenchuk 2026 current</td><td>10.4%</td></tr>
+<tr><td>sumy 2023 baseline</td><td>5.2%</td></tr>
+<tr><td>sumy around nov 2024 strike</td><td>7.3%</td></tr>
+<tr><td>sumy around apr 2025 strike</td><td>6.2%</td></tr>
+<tr><td>sumy 2026 current</td><td>8.6%</td></tr>
+</table>
+<p><b>kremenchuk is flat across all 4 years</b>, no trend, consistent with its resolved near zero prediction.
+<b>sumy shows a real, gradual rise (5.2% to 8.6%) but not a sharp jump at either strike date specifically</b>, most
+likely because the april 2025 strike damaged about 20 buildings out of sumy's 28,265, far too small an event to move a
+city wide average. the gradual rise points to something diffuse accumulating over years rather than one clean cause.</p>
+<p><b>bottom line, and where we deliberately stopped:</b> sumy is genuinely changing over time in a way kremenchuk
+isn't, which is real evidence this isn't pure noise, but it doesn't fully explain the size of the reading, and we
+stopped chasing it further here on purpose. an honestly unresolved question is an acceptable way to end a clearly
+scoped side investigation, it would not be an acceptable way to end the validated result above, which is why these
+are kept separate. one more caveat regardless: the satellite photo underneath the buildings is Esri's basemap, and we
+don't know its exact capture date.</p>
+</div>
+
+<h3>rubizhne: current snapshot (real front line damage)</h3>
+<iframe src="maps/rubizhne_current.html"></iframe>
+
+<h3>sievierodonetsk: current snapshot (real front line damage)</h3>
+<iframe src="maps/sievierodonetsk_current.html"></iframe>
+
+<h3>kremenchuk: current snapshot (control, 0.1% actually damaged in 2022)</h3>
+<p class="caption">this city was barely touched by the war. compare how much red still shows up here to the two
+cities above, that's the generalization failure made visible.</p>
+<iframe src="maps/kremenchuk_current.html"></iframe>
+
+<h3>sumy: current snapshot (control, 0.1% actually damaged in 2022)</h3>
+<iframe src="maps/sumy_current.html"></iframe>
+
+<h2>code</h2>
+<p>full pipeline, scripts, and data sources are documented in the repository readme.</p>
+
+</body>
+</html>

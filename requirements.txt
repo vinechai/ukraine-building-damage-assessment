@@ -1,0 +1,18 @@
+torch>=2.2
+torchvision>=0.17
+scikit-learn>=1.4
+matplotlib>=3.8
+numpy>=1.26
+pandas>=2.2
+geopandas>=0.14
+shapely>=2.0
+tqdm>=4.66
+
+# Benchmark dataset download (Google Drive)
+gdown>=5.1
+
+# Sentinel-1 SAR access for the learned model, once past the PWTT baseline
+# (needs a free Google Earth Engine account + `earthengine authenticate`)
+earthengine-api>=1.0
+geemap>=0.32
+pwtt>=0.1
