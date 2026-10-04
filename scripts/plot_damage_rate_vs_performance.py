@@ -32,7 +32,7 @@ def main():
     ax.set_xscale("log")
     ax.set_xlabel("% of buildings actually damaged in the city (log scale)")
     ax.set_ylabel("our model's AUC minus pwtt baseline's AUC\n(points above 0 = our model wins)")
-    ax.set_title("our model helps more in cities with more real damage")
+    ax.set_title("model vs baseline, by city: low damage rates swing wildly, high rates lean slightly to the model")
     plt.tight_layout()
     plt.savefig(args.out, dpi=150)
     print(f"saved to {args.out}")

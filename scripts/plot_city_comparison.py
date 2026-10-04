@@ -49,7 +49,7 @@ def main():
     import geopandas as gpd
     plot_df = gpd.GeoDataFrame(plot_df, geometry="geometry", crs="EPSG:4326")
 
-    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+    fig, axes = plt.subplots(1, 3, figsize=(18, 3.5))
     panels = [("damaged", "ground truth"), ("baseline_pred", "pwtt baseline"), ("model_pred", "our model")]
     for ax, (col, title) in zip(axes, panels):
         plot_df[plot_df[col] == 0].plot(ax=ax, color="tab:green", markersize=1)
